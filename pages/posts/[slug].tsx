@@ -9,16 +9,18 @@ import { getPostBySlug, getAllPosts } from '../../lib/api'
 import PostTitle from '../../components/post-title'
 import Head from 'next/head'
 import { CMS_NAME } from '../../lib/constants'
-import markdownToHtml from '../../lib/markdownToHtml'
 import type PostType from '../../interfaces/post'
+import sizeOf from 'image-size'
+import { join } from 'path'
 
 type Props = {
   post: PostType
+  imageSizes: Record<string, { width: number; height: number }>
   morePosts: PostType[]
   preview?: boolean
 }
 
-export default function Post({ post, morePosts, preview }: Props) {
+export default function Post({ post, imageSizes, morePosts, preview }: Props) {
   const router = useRouter()
   if (!router.isFallback && !post?.slug) {
     return <ErrorPage statusCode={404} />
@@ -44,7 +46,7 @@ export default function Post({ post, morePosts, preview }: Props) {
                 date={post.date}
                 author={post.author}
               />
-              <PostBody content={post.content} />
+              <PostBody content={post.content} imageSizes={imageSizes} />
             </article>
           </>
         )}
@@ -69,15 +71,24 @@ export async function getStaticProps({ params }: Params) {
     'ogImage',
     'coverImage',
   ])
-  const content = await markdownToHtml(post.content || '')
+
+  const imageSizes: Props['imageSizes'] = {}
+
+  // A regular expression to iterate on all images in the post
+  const iterator = post.content.matchAll(/\!\[.*]\((.*)\)/g)
+  let match: IteratorResult<RegExpMatchArray, any>
+  while (!(match = iterator.next()).done) {
+    const [, src] = match.value
+    try {
+      const { width, height } = sizeOf(join('public', src))
+      imageSizes[src] = { width, height }
+    } catch (err) {
+      console.error(`Can’t get dimensions for ${src}:`, err)
+    }
+  }
 
   return {
-    props: {
-      post: {
-        ...post,
-        content,
-      },
-    },
+    props: { post, imageSizes },
   }
 }
 
